@@ -481,12 +481,7 @@ class TruthGuiApp:
 
 def run() -> None:
     root = tk.Tk()
-    app = TruthGuiApp(root)
-    app.problem_text.insert("1.0", "How do I maximize business growth with low risk?")
-    app.directive_text.insert(
-        "1.0",
-        "Prioritize sustainable expansion, protect downside risk, and recommend resilient resource allocation.",
-    )
+    TruthGuiApp(root)
     root.mainloop()
 
 
