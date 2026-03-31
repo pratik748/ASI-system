@@ -4,7 +4,10 @@ import random
 from statistics import mean, variance
 from typing import Dict, List
 
-from twins.generator import TwinGenerator
+try:
+    from ..twins.generator import TwinGenerator
+except ImportError:  # pragma: no cover
+    from twins.generator import TwinGenerator
 
 
 class SimulationEngine:

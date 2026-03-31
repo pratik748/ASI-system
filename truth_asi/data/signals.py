@@ -6,7 +6,10 @@ from typing import Dict, Iterable
 
 import requests
 
-from problem.interpreter import InterpretedProblem
+try:
+    from ..problem.interpreter import InterpretedProblem
+except ImportError:  # pragma: no cover
+    from problem.interpreter import InterpretedProblem
 
 
 class InternetSignalFetcher:
