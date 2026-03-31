@@ -12,14 +12,24 @@ from tkinter import ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
-from core.tension import TensionCore
-from data.signals import InternetSignalFetcher
-from memory.scar import ScarMemory
-from problem.interpreter import InterpretedProblem, ProblemInterpreter
-from simulation.engine import SimulationEngine
-from simulation.selector import Selector
-from state.constructor import StateConstructor
-from twins.generator import TwinGenerator
+try:
+    from .core.tension import TensionCore
+    from .data.signals import InternetSignalFetcher
+    from .memory.scar import ScarMemory
+    from .problem.interpreter import InterpretedProblem, ProblemInterpreter
+    from .simulation.engine import SimulationEngine
+    from .simulation.selector import Selector
+    from .state.constructor import StateConstructor
+    from .twins.generator import TwinGenerator
+except ImportError:  # pragma: no cover - allows running as a script
+    from core.tension import TensionCore
+    from data.signals import InternetSignalFetcher
+    from memory.scar import ScarMemory
+    from problem.interpreter import InterpretedProblem, ProblemInterpreter
+    from simulation.engine import SimulationEngine
+    from simulation.selector import Selector
+    from state.constructor import StateConstructor
+    from twins.generator import TwinGenerator
 
 
 class VariableControl:
@@ -84,8 +94,8 @@ class VariableControl:
 class TruthGuiApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("TRUTH ASI Intelligence Engine")
-        self.root.geometry("1320x760")
+        self.root.title("TRUTH ASI // MACHINE GOD CONSOLE")
+        self.root.geometry("1360x820")
 
         random.seed()
 
@@ -93,6 +103,7 @@ class TruthGuiApp:
         self.iteration = 0
         self.score_history: list[float] = []
         self.last_interpreted: InterpretedProblem | None = None
+        self.thinking_by_iteration: Dict[int, str] = {}
 
         self.running = False
         self.stop_event = threading.Event()
@@ -104,8 +115,24 @@ class TruthGuiApp:
         self.state_constructor = StateConstructor()
         self.memory = ScarMemory(storage_path="truth_asi/memory_store.json")
 
+        self._configure_styles()
         self._build_layout()
         self.root.after(120, self._process_queue)
+
+    def _configure_styles(self) -> None:
+        self.root.configure(bg="#05070f")
+        style = ttk.Style()
+        style.theme_use("clam")
+
+        style.configure(".", background="#05070f", foreground="#d6e9ff", fieldbackground="#0b1020")
+        style.configure("TFrame", background="#05070f")
+        style.configure("TLabelframe", background="#060b16", foreground="#7bf5ff", borderwidth=1)
+        style.configure("TLabelframe.Label", background="#060b16", foreground="#7bf5ff", font=("TkDefaultFont", 10, "bold"))
+        style.configure("TLabel", background="#05070f", foreground="#d6e9ff")
+        style.configure("TEntry", fieldbackground="#0b1020", foreground="#d6e9ff", insertcolor="#7bf5ff")
+        style.configure("TButton", background="#111b3a", foreground="#9cf6ff", borderwidth=1)
+        style.map("TButton", background=[("active", "#1e2b57")], foreground=[("active", "#c6fcff")])
+        style.configure("Vertical.TScrollbar", background="#10182e", troughcolor="#090f1d")
 
     def _build_layout(self) -> None:
         main = ttk.Frame(self.root, padding=10)
@@ -115,7 +142,7 @@ class TruthGuiApp:
         main.columnconfigure(1, weight=2)
         main.rowconfigure(0, weight=1)
 
-        left = ttk.LabelFrame(main, text="Problem Setup", padding=10)
+        left = ttk.LabelFrame(main, text="Simulation Inputs", padding=10)
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         left.columnconfigure(0, weight=1)
         left.rowconfigure(3, weight=1)
@@ -124,12 +151,12 @@ class TruthGuiApp:
         input_row.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         input_row.columnconfigure(0, weight=1)
 
-        ttk.Label(input_row, text="Enter Problem").grid(row=0, column=0, sticky="w")
+        ttk.Label(input_row, text="Inject Problem Into Core").grid(row=0, column=0, sticky="w")
         self.problem_var = tk.StringVar()
         self.problem_entry = ttk.Entry(input_row, textvariable=self.problem_var)
         self.problem_entry.grid(row=1, column=0, sticky="ew", padx=(0, 8), pady=(4, 0))
         self.problem_entry.bind("<Return>", lambda _e: self.solve_problem())
-        ttk.Button(input_row, text="Solve", command=self.solve_problem).grid(row=1, column=1, sticky="ew", pady=(4, 0))
+        ttk.Button(input_row, text="Awaken", command=self.solve_problem).grid(row=1, column=1, sticky="ew", pady=(4, 0))
 
         self.problem_summary_var = tk.StringVar(value="Interpreted problem: (none)")
         ttk.Label(left, textvariable=self.problem_summary_var, justify="left", wraplength=420).grid(row=1, column=0, sticky="w", pady=(0, 8))
@@ -137,7 +164,7 @@ class TruthGuiApp:
         self.state_label = ttk.Label(left, text="current_state={}\ndesired_state={}", justify="left", wraplength=450)
         self.state_label.grid(row=2, column=0, sticky="w", pady=(0, 8))
 
-        self.var_canvas = tk.Canvas(left, highlightthickness=0)
+        self.var_canvas = tk.Canvas(left, highlightthickness=0, bg="#060b16")
         self.var_canvas.grid(row=3, column=0, sticky="nsew")
 
         scrollbar = ttk.Scrollbar(left, orient="vertical", command=self.var_canvas.yview)
@@ -165,29 +192,70 @@ class TruthGuiApp:
         ttk.Button(controls, text="Stop", command=self.stop_simulation).grid(row=0, column=1, padx=3, sticky="ew")
         ttk.Button(controls, text="Reset", command=self.reset_simulation).grid(row=0, column=2, padx=3, sticky="ew")
 
-        right = ttk.LabelFrame(main, text="Intelligent Output", padding=10)
+        right = ttk.LabelFrame(main, text="Machine Mind", padding=10)
         right.grid(row=0, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
         right.rowconfigure(1, weight=1)
-        right.rowconfigure(2, weight=1)
+        right.rowconfigure(2, weight=2)
 
         self.status_var = tk.StringVar(value="Idle")
         ttk.Label(right, textvariable=self.status_var).grid(row=0, column=0, sticky="w")
 
-        self.output_text = tk.Text(right, height=14, wrap="word", state="disabled")
+        self.output_text = tk.Text(
+            right,
+            height=11,
+            wrap="word",
+            state="disabled",
+            bg="#070e1f",
+            fg="#94f8ff",
+            insertbackground="#94f8ff",
+            selectbackground="#1c3a65",
+            relief="flat",
+        )
         self.output_text.grid(row=1, column=0, sticky="nsew", pady=(6, 8))
 
-        fig = Figure(figsize=(6, 3), dpi=100)
+        introspect = ttk.LabelFrame(right, text="Cognition Feed (click iteration)", padding=8)
+        introspect.grid(row=2, column=0, sticky="nsew")
+        introspect.columnconfigure(0, weight=1)
+        introspect.columnconfigure(1, weight=2)
+        introspect.rowconfigure(0, weight=1)
+
+        self.iteration_list = tk.Listbox(
+            introspect,
+            bg="#090f1d",
+            fg="#f2fbff",
+            selectbackground="#1d3563",
+            selectforeground="#d7ffff",
+            activestyle="none",
+        )
+        self.iteration_list.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        self.iteration_list.bind("<<ListboxSelect>>", self._on_iteration_selected)
+
+        self.thinking_text = tk.Text(
+            introspect,
+            wrap="word",
+            state="disabled",
+            bg="#050913",
+            fg="#7bf5ff",
+            insertbackground="#7bf5ff",
+            relief="flat",
+        )
+        self.thinking_text.grid(row=0, column=1, sticky="nsew")
+
+        fig = Figure(figsize=(6, 3), dpi=100, facecolor="#05070f")
         self.ax = fig.add_subplot(111)
-        self.ax.set_title("Live Iteration + Score")
-        self.ax.set_xlabel("Iteration")
-        self.ax.set_ylabel("Best Score")
-        self.ax.grid(True, alpha=0.3)
-        self.line, = self.ax.plot([], [], color="#1967d2", linewidth=2)
+        self.ax.set_facecolor("#070e1f")
+        self.ax.set_title("Iteration Power Curve", color="#b8f8ff")
+        self.ax.set_xlabel("Iteration", color="#b8f8ff")
+        self.ax.set_ylabel("Best Score", color="#b8f8ff")
+        self.ax.tick_params(colors="#89d7ff")
+        self.ax.grid(True, alpha=0.25, color="#2d4f74")
+        self.line, = self.ax.plot([], [], color="#2ee2ff", linewidth=2)
 
         self.canvas = FigureCanvasTkAgg(fig, master=right)
         self.canvas.draw()
-        self.canvas.get_tk_widget().grid(row=2, column=0, sticky="nsew")
+        self.canvas.get_tk_widget().grid(row=3, column=0, sticky="nsew", pady=(8, 0))
+        right.rowconfigure(3, weight=2)
 
     def _rebuild_variable_controls(self, current_state: Dict[str, float], desired_state: Dict[str, float]) -> None:
         for control in self.variable_controls:
@@ -220,6 +288,9 @@ class TruthGuiApp:
         self.last_interpreted = interpreted
         self.iteration = 0
         self.score_history.clear()
+        self.thinking_by_iteration.clear()
+        self.iteration_list.delete(0, "end")
+        self._set_thinking_preview("Awaiting cognition snapshots...")
         self._update_plot()
         self._rebuild_variable_controls(current_state, desired_state)
         self._refresh_state_preview()
@@ -243,6 +314,29 @@ class TruthGuiApp:
         current_state = {control.name: round(control.current(), 3) for control in self.variable_controls}
         desired_state = {control.name: round(control.desired(), 3) for control in self.variable_controls}
         self.state_label.config(text=f"current_state={current_state}\ndesired_state={desired_state}")
+
+    def _set_thinking_preview(self, message: str) -> None:
+        self.thinking_text.config(state="normal")
+        self.thinking_text.delete("1.0", "end")
+        self.thinking_text.insert("end", message)
+        self.thinking_text.config(state="disabled")
+
+    def _on_iteration_selected(self, _event: tk.Event) -> None:
+        selected = self.iteration_list.curselection()
+        if not selected:
+            return
+
+        line = self.iteration_list.get(selected[0])
+        if not line.startswith("Iter "):
+            return
+
+        try:
+            iteration = int(line.split()[1])
+        except (ValueError, IndexError):
+            return
+
+        thought = self.thinking_by_iteration.get(iteration, "No thinking trace captured for this step.")
+        self._set_thinking_preview(thought)
 
     def _log(self, message: str) -> None:
         self.output_text.config(state="normal")
@@ -284,6 +378,9 @@ class TruthGuiApp:
         self.stop_simulation()
         self.iteration = 0
         self.score_history.clear()
+        self.thinking_by_iteration.clear()
+        self.iteration_list.delete(0, "end")
+        self._set_thinking_preview("Cognition feed reset.")
         self._update_plot()
         self.output_text.config(state="normal")
         self.output_text.delete("1.0", "end")
@@ -292,6 +389,30 @@ class TruthGuiApp:
             control.set_current(0.5)
         self._refresh_state_preview()
         self.status_var.set("Reset complete")
+
+    def _build_thinking_trace(
+        self,
+        iteration: int,
+        best_state: Dict[str, float],
+        desired_state: Dict[str, float],
+        tension_total: float,
+        score: float,
+    ) -> str:
+        deltas = sorted(
+            ((key, desired_state[key] - value) for key, value in best_state.items()),
+            key=lambda item: abs(item[1]),
+            reverse=True,
+        )
+        top_focus = ", ".join(f"{k}:{d:+.3f}" for k, d in deltas[:4])
+        mode = "stabilize" if tension_total < 0.35 else "push target acquisition"
+        return (
+            f"Iteration {iteration}\n"
+            f"Neural posture: {mode}\n"
+            f"Best score: {score:.4f}\n"
+            f"Residual tension: {tension_total:.4f}\n"
+            f"Largest target gaps: {top_focus}\n"
+            "Interpretation: the engine is reweighting variables toward the target while preserving system stability."
+        )
 
     def _simulation_worker(self, current_state: Dict[str, float], desired_state: Dict[str, float]) -> None:
         tension = TensionCore(current_state=dict(current_state), desired_state=dict(desired_state))
@@ -350,6 +471,13 @@ class TruthGuiApp:
 
             score = float(best["score"])
             self.score_history.append(score)
+            thought = self._build_thinking_trace(
+                iteration=self.iteration,
+                best_state=dict(best_vars),
+                desired_state=dict(desired_state),
+                tension_total=tension.total_tension(),
+                score=score,
+            )
 
             self.result_queue.put(
                 {
@@ -358,6 +486,7 @@ class TruthGuiApp:
                     "best_score": score,
                     "best_state": dict(best_vars),
                     "total_tension": tension.total_tension(),
+                    "thought": thought,
                 }
             )
 
@@ -400,16 +529,24 @@ class TruthGuiApp:
 
             kind = payload.get("type")
             if kind == "update":
+                iteration = payload["iteration"]
                 message = (
-                    f"Iter {payload['iteration']:03d} | "
+                    f"Iter {iteration:03d} | "
                     f"best score={payload['best_score']:.4f} | "
                     f"tension={payload['total_tension']:.4f} | "
                     f"state={payload['best_state']}"
                 )
                 self._log(message)
+                self.thinking_by_iteration[iteration] = payload.get("thought", "No thought available.")
+                self.iteration_list.insert("end", f"Iter {iteration}")
+                self.iteration_list.yview_moveto(1)
+                if len(self.thinking_by_iteration) == 1:
+                    self.iteration_list.selection_clear(0, "end")
+                    self.iteration_list.selection_set(0)
+                    self._set_thinking_preview(self.thinking_by_iteration[iteration])
                 self._apply_best_state_to_sliders(payload["best_state"])
                 self._update_plot()
-                self.status_var.set(f"Running · iteration {payload['iteration']}")
+                self.status_var.set(f"Running · iteration {iteration}")
             elif kind == "done":
                 self._log(payload["text"])
                 if self.last_interpreted:

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Dict
 
-from problem.interpreter import InterpretedProblem
+try:
+    from ..problem.interpreter import InterpretedProblem
+except ImportError:  # pragma: no cover
+    from problem.interpreter import InterpretedProblem
 
 
 NEGATIVE_VARIABLE_HINTS = {
