@@ -1,13 +1,53 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import json
+from pathlib import Path
 from typing import Dict, List
 
 
 class ScarMemory:
-    def __init__(self) -> None:
+    def __init__(self, storage_path: str = "truth_asi_memory.json") -> None:
+        self.storage_path = Path(storage_path)
         self.records: List[Dict] = []
+        self.history: List[Dict] = []
         self.bias: Dict[str, str] = {}
+        self._load()
+
+    def _load(self) -> None:
+        if not self.storage_path.exists():
+            return
+        try:
+            payload = json.loads(self.storage_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return
+        self.history = payload.get("history", [])
+
+    def _save(self) -> None:
+        payload = {"history": self.history[-200:]}
+        try:
+            self.storage_path.write_text(json.dumps(payload, indent=2))
+        except OSError:
+            return
+
+    def remember_problem(self, summary: Dict) -> None:
+        self.history.append(summary)
+        self._save()
+
+    def infer_problem_bias(self, variables: List[str]) -> Dict[str, str]:
+        if not self.history:
+            return {}
+
+        votes = defaultdict(int)
+        tracked = set(variables)
+        for item in self.history[-40:]:
+            optimized_state = item.get("optimized_state", {})
+            for variable, value in optimized_state.items():
+                if variable not in tracked:
+                    continue
+                votes[variable] += 1 if value >= 0.5 else -1
+
+        return {key: "increase" if value >= 0 else "decrease" for key, value in votes.items()}
 
     def record(self, twin: Dict, score: float, record_type: str) -> None:
         self.records.append(
@@ -67,6 +107,8 @@ class ScarMemory:
         }
 
         for key, direction in self.bias.items():
+            if key not in adjusted["variables"]:
+                continue
             delta = strength if direction == "increase" else -strength
             adjusted["variables"][key] = max(0.0, min(1.0, adjusted["variables"][key] + delta))
 
