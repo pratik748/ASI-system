@@ -13,20 +13,25 @@ class TwinGenerator:
         return self._clamp(value + random.uniform(-0.05, 0.05))
 
     def _perturb_aggressive(self, value: float) -> float:
-        return self._clamp(value + random.uniform(-0.10, 0.10))
+        return self._clamp(value + random.uniform(-0.12, 0.12))
 
     def _perturb_inverted(self, value: float, target: float) -> float:
         direction = -1 if target > value else 1
-        return self._clamp(value + direction * random.uniform(0.05, 0.10))
+        return self._clamp(value + direction * random.uniform(0.05, 0.12))
 
-    def generate_initial_twins(self, problem_field: Dict, intensity: float) -> List[Dict[str, Dict[str, float]]]:
-        """Create a dynamic number of starter twins based on tension intensity."""
+    def generate_initial_twins(
+        self,
+        problem_field: Dict,
+        intensity: float,
+        budget: int,
+    ) -> List[Dict[str, Dict[str, float]]]:
         variables = problem_field["variables"]
         target = problem_field["target"]
         keys = list(variables.keys())
 
-        base = len(keys)
-        twin_count = max(3, int(base + (intensity * base * 2)))
+        base = max(4, len(keys))
+        budget_factor = max(1, min(12, budget // 30))
+        twin_count = max(4, min(base * budget_factor, base + int(intensity * 10)))
 
         twins: List[Dict[str, Dict[str, float]]] = []
         seen = set()
@@ -61,7 +66,6 @@ class TwinGenerator:
         branch_factor: int,
         mutation_scale: float,
     ) -> List[Dict[str, Dict[str, float]]]:
-        """Spawn children from a parent with dynamic branch factor."""
         children: List[Dict[str, Dict[str, float]]] = []
         parent_vars = parent["variables"]
         target = parent["target"]
@@ -72,7 +76,7 @@ class TwinGenerator:
             mutation_count = random.randint(1, len(keys))
             mutate_keys = random.sample(keys, mutation_count)
             for key in mutate_keys:
-                toward_target = (target[key] - child_vars[key]) * random.uniform(0.2, 1.0)
+                toward_target = (target[key] - child_vars[key]) * random.uniform(0.2, 1.1)
                 noise = random.uniform(-mutation_scale, mutation_scale)
                 child_vars[key] = self._clamp(child_vars[key] + toward_target + noise)
 
