@@ -93,6 +93,7 @@ class TruthGuiApp:
         self.iteration = 0
         self.score_history: list[float] = []
         self.last_interpreted: InterpretedProblem | None = None
+        self.last_problem_text = ""
 
         self.running = False
         self.stop_event = threading.Event()
@@ -120,16 +121,39 @@ class TruthGuiApp:
         left.columnconfigure(0, weight=1)
         left.rowconfigure(3, weight=1)
 
-        input_row = ttk.Frame(left)
-        input_row.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        input_row.columnconfigure(0, weight=1)
+        prompt_panel = ttk.LabelFrame(left, text="Mission Prompt Panel", padding=8)
+        prompt_panel.grid(row=0, column=0, sticky="nsew", pady=(0, 8))
+        prompt_panel.columnconfigure(0, weight=1)
+        prompt_panel.rowconfigure(1, weight=1)
+        prompt_panel.rowconfigure(3, weight=1)
 
-        ttk.Label(input_row, text="Enter Problem").grid(row=0, column=0, sticky="w")
-        self.problem_var = tk.StringVar()
-        self.problem_entry = ttk.Entry(input_row, textvariable=self.problem_var)
-        self.problem_entry.grid(row=1, column=0, sticky="ew", padx=(0, 8), pady=(4, 0))
-        self.problem_entry.bind("<Return>", lambda _e: self.solve_problem())
-        ttk.Button(input_row, text="Solve", command=self.solve_problem).grid(row=1, column=1, sticky="ew", pady=(4, 0))
+        ttk.Label(
+            prompt_panel,
+            text="Describe the real-world problem in natural language:",
+        ).grid(row=0, column=0, sticky="w")
+        self.problem_text = tk.Text(prompt_panel, height=4, wrap="word")
+        self.problem_text.grid(row=1, column=0, sticky="nsew", pady=(4, 8))
+
+        ttk.Label(
+            prompt_panel,
+            text="Optional architecture directives (constraints, stakeholders, objective hierarchy):",
+        ).grid(row=2, column=0, sticky="w")
+        self.directive_text = tk.Text(prompt_panel, height=4, wrap="word")
+        self.directive_text.grid(row=3, column=0, sticky="nsew", pady=(4, 8))
+
+        controls_row = ttk.Frame(prompt_panel)
+        controls_row.grid(row=4, column=0, sticky="ew")
+        controls_row.columnconfigure(1, weight=1)
+
+        self.unbounded_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            controls_row,
+            text="Unbounded search mode (no default complexity limits)",
+            variable=self.unbounded_var,
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Button(controls_row, text="Solve", command=self.solve_problem).grid(row=0, column=2, sticky="e")
+
+        self.problem_text.bind("<Control-Return>", lambda _e: self.solve_problem())
 
         self.problem_summary_var = tk.StringVar(value="Interpreted problem: (none)")
         ttk.Label(left, textvariable=self.problem_summary_var, justify="left", wraplength=420).grid(row=1, column=0, sticky="w", pady=(0, 8))
@@ -202,10 +226,14 @@ class TruthGuiApp:
             self.variable_controls.append(control)
 
     def solve_problem(self) -> None:
-        problem_text = self.problem_var.get().strip()
+        problem_text = self.problem_text.get("1.0", "end").strip()
+        directive_text = self.directive_text.get("1.0", "end").strip()
         if not problem_text:
             self.status_var.set("Enter a natural-language problem first.")
             return
+
+        if directive_text:
+            problem_text = f"{problem_text}\n\nArchitecture directives: {directive_text}"
 
         interpreted = self.interpreter.interpret(problem_text)
         signals = self.data_fetcher.fetch_signals(interpreted)
@@ -218,6 +246,7 @@ class TruthGuiApp:
             current_state[key] = max(0.0, min(1.0, current_state[key] + (0.04 if direction == "increase" else -0.04)))
 
         self.last_interpreted = interpreted
+        self.last_problem_text = problem_text
         self.iteration = 0
         self.score_history.clear()
         self._update_plot()
@@ -231,6 +260,11 @@ class TruthGuiApp:
         self._log(f"Variables used: {interpreted.variables}")
         self._log(f"Current state from internet signals: {current_state}")
         self._log(f"Desired state from goal intent: {desired_state}")
+        self._log(
+            "Solver mode: UNBOUNDED super-intelligence search"
+            if self.unbounded_var.get()
+            else "Solver mode: bounded search"
+        )
 
         self.start_simulation()
 
@@ -299,8 +333,14 @@ class TruthGuiApp:
         engine = SimulationEngine()
         selector = Selector()
 
-        max_depth = max(3, min(8, 2 + len(current_state) // 2))
-        iteration_budget = max(180, len(current_state) * 45)
+        if self.unbounded_var.get():
+            max_depth = max(10, 2 + len(current_state))
+            iteration_budget = max(5000, len(current_state) * 800)
+            max_iterations = 500
+        else:
+            max_depth = max(3, min(8, 2 + len(current_state) // 2))
+            iteration_budget = max(180, len(current_state) * 45)
+            max_iterations = 25
 
         while not self.stop_event.is_set():
             self.iteration += 1
@@ -362,11 +402,11 @@ class TruthGuiApp:
             )
 
             normalized_best = score / max(1, len(current_state))
-            if normalized_best > 0.985 or not tension.is_active() or self.iteration >= 25:
+            if normalized_best > 0.995 or not tension.is_active() or self.iteration >= max_iterations:
                 self.result_queue.put(
                     {
                         "type": "done",
-                        "text": f"Solution converged at iteration {self.iteration} (score={normalized_best:.4f})",
+                        "text": f"Solution converged at iteration {self.iteration} (score={normalized_best:.4f}, mode={'unbounded' if self.unbounded_var.get() else 'bounded'})",
                         "best_state": dict(best_vars),
                     }
                 )
@@ -415,6 +455,11 @@ class TruthGuiApp:
                 if self.last_interpreted:
                     self._log(f"Best strategy found: move toward {payload.get('best_state', {})}")
                     self._log("Why it works: balances target attainment, stability, and trade-off penalties.")
+                    self._log(
+                        "Super-intelligence synthesis: translated mission prompt into a multi-domain variable architecture, then searched high-dimensional futures."
+                    )
+                    if self.last_problem_text:
+                        self._log(f"Mission prompt archived: {self.last_problem_text[:220]}")
                     self.memory.remember_problem(
                         {
                             "problem": self.last_interpreted.raw_problem,
@@ -436,8 +481,7 @@ class TruthGuiApp:
 
 def run() -> None:
     root = tk.Tk()
-    app = TruthGuiApp(root)
-    app.problem_var.set("How do I maximize business growth with low risk?")
+    TruthGuiApp(root)
     root.mainloop()
 
 
