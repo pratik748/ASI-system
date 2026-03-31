@@ -19,19 +19,22 @@ class TwinGenerator:
         direction = -1 if target > value else 1
         return self._clamp(value + direction * random.uniform(0.05, 0.10))
 
-    def generate_twins(self, problem_field: Dict, n: int = 50) -> List[Dict[str, Dict[str, float]]]:
+    def generate_initial_twins(self, problem_field: Dict, intensity: float) -> List[Dict[str, Dict[str, float]]]:
+        """Create a dynamic number of starter twins based on tension intensity."""
         variables = problem_field["variables"]
         target = problem_field["target"]
         keys = list(variables.keys())
 
+        base = len(keys)
+        twin_count = max(3, int(base + (intensity * base * 2)))
+
         twins: List[Dict[str, Dict[str, float]]] = []
         seen = set()
 
-        while len(twins) < n:
+        while len(twins) < twin_count:
             mode = random.choice(("small", "aggressive", "inverted"))
             new_vars = dict(variables)
 
-            # perturb at least one and up to all variables for diversity
             variable_count = random.randint(1, len(keys))
             perturbed_keys = random.sample(keys, variable_count)
 
@@ -51,3 +54,28 @@ class TwinGenerator:
             twins.append({"variables": new_vars, "target": dict(target)})
 
         return twins
+
+    def spawn_children(
+        self,
+        parent: Dict[str, Dict[str, float]],
+        branch_factor: int,
+        mutation_scale: float,
+    ) -> List[Dict[str, Dict[str, float]]]:
+        """Spawn children from a parent with dynamic branch factor."""
+        children: List[Dict[str, Dict[str, float]]] = []
+        parent_vars = parent["variables"]
+        target = parent["target"]
+
+        keys = list(parent_vars.keys())
+        for _ in range(branch_factor):
+            child_vars = dict(parent_vars)
+            mutation_count = random.randint(1, len(keys))
+            mutate_keys = random.sample(keys, mutation_count)
+            for key in mutate_keys:
+                toward_target = (target[key] - child_vars[key]) * random.uniform(0.2, 1.0)
+                noise = random.uniform(-mutation_scale, mutation_scale)
+                child_vars[key] = self._clamp(child_vars[key] + toward_target + noise)
+
+            children.append({"variables": child_vars, "target": dict(target)})
+
+        return children

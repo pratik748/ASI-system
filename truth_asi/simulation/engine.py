@@ -4,6 +4,8 @@ import random
 from statistics import variance
 from typing import Dict, List
 
+from twins.generator import TwinGenerator
+
 
 class SimulationEngine:
     def __init__(self, move_rate: float = 0.1, noise: float = 0.02, variance_penalty: float = 0.05) -> None:
@@ -38,27 +40,68 @@ class SimulationEngine:
         score -= traj_variance * self.variance_penalty
         return score
 
-    def simulate_recursive(self, twin: Dict[str, Dict[str, float]], depth: int = 2) -> Dict[str, float]:
+    def _dynamic_branch_factor(self, normalized_score: float) -> int:
+        if normalized_score < 0.35:
+            return 0
+        if normalized_score < 0.60:
+            return random.randint(1, 2)
+        if normalized_score < 0.85:
+            return random.randint(2, 3)
+        return random.randint(3, 5)
+
+    def explore_tree(
+        self,
+        twin: Dict[str, Dict[str, float]],
+        twin_generator: TwinGenerator,
+        max_depth: int,
+        score_gate: float,
+        budget_left: int,
+        depth: int = 0,
+    ) -> Dict[str, float | Dict[str, float] | int]:
+        """Recursively explore descendants with dynamic branching and compute budget."""
         trajectory = self.run_simulation(twin)
         base_score = self.evaluate_outcome(trajectory, twin["target"])
 
-        if depth <= 0:
-            return {"final_score": base_score}
+        best_score = base_score
+        best_state = dict(trajectory[-1])
+        nodes_used = 1
+        max_possible = len(best_state)
+        normalized = best_score / max_possible
 
-        final_state = trajectory[-1]
-        child_scores = []
-        child_count = random.randint(2, 3)
+        if budget_left <= 1 or depth >= max_depth:
+            return {"final_score": best_score, "best_state": best_state, "nodes_used": nodes_used}
 
-        for _ in range(child_count):
-            child_variables = {
-                k: self._clamp(v + random.uniform(-0.03, 0.03))
-                for k, v in final_state.items()
-            }
-            child_twin = {
-                "variables": child_variables,
-                "target": dict(twin["target"]),
-            }
-            child_scores.append(self.simulate_recursive(child_twin, depth=depth - 1)["final_score"])
+        branch_factor = self._dynamic_branch_factor(normalized)
+        if normalized < score_gate:
+            branch_factor = min(branch_factor, 1)
 
-        final_score = 0.5 * base_score + 0.5 * (sum(child_scores) / len(child_scores))
-        return {"final_score": final_score}
+        if branch_factor == 0:
+            return {"final_score": best_score, "best_state": best_state, "nodes_used": nodes_used}
+
+        mutation_scale = max(0.01, 0.06 * (1.0 - normalized))
+        children = twin_generator.spawn_children(
+            {"variables": best_state, "target": dict(twin["target"])} ,
+            branch_factor=branch_factor,
+            mutation_scale=mutation_scale,
+        )
+
+        for child in children:
+            remaining = budget_left - nodes_used
+            if remaining <= 0:
+                break
+
+            child_result = self.explore_tree(
+                twin=child,
+                twin_generator=twin_generator,
+                max_depth=max_depth,
+                score_gate=score_gate,
+                budget_left=remaining,
+                depth=depth + 1,
+            )
+            nodes_used += int(child_result["nodes_used"])
+
+            if float(child_result["final_score"]) > best_score:
+                best_score = float(child_result["final_score"])
+                best_state = dict(child_result["best_state"])
+
+        return {"final_score": best_score, "best_state": best_state, "nodes_used": nodes_used}
